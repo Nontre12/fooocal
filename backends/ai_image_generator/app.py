@@ -7,6 +7,7 @@ import time, uuid, json, pika
 import torch
 from diffusers import FluxPipeline
 from minio import Minio
+from pymongo import MongoClient
 
 
 class S3Bucket:
@@ -100,9 +101,7 @@ def main():
     time.sleep(5)
 
     s3_endpoint = os.environ.get("S3_ENDPOINT", "minio:9000")
-    s3_bucket = os.environ.get(
-        "S3_BUCKET", "backend-ai-generated-images"
-    )
+    s3_bucket = os.environ.get("S3_BUCKET", "generated-images")
     s3_access_key = os.environ.get("S3_ACCESS_KEY", "")
     s3_secret_key = os.environ.get("S3_SECRET_KEY", "")
 
@@ -154,6 +153,18 @@ def main():
 
         if os.path.exists(source_file):
             os.remove(source_file)
+
+        data = {
+            #"_id": uuid.uuid4(),
+            "image_file_name": destination_file,
+            "prompt": prompt
+        }
+
+        client = MongoClient("mongodb://root:root@mongo:27017/")
+        database = client["fooocal"]
+
+        collection = database["generated-images"]
+        collection.insert_one(data)
 
     rabbitmq.consume("generate_ai_image", callback=prompt)
 

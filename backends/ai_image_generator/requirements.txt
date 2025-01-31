@@ -1,0 +1,7 @@
+pika
+diffusers
+minio
+transformers
+accelerate
+sentencepiece
+pymongo

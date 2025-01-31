@@ -1,18 +1,15 @@
 services:
   frontend-landing:
-    image: frontend-landing
     build: 
       context: frontends/landing
       dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+    expose:
+      - 80
 
   backend-ai-images:
-    image: backen-ai-images
     build: 
       context: backends/ai_image_generator
       dockerfile: Dockerfile
-    runtime: rocm
     ipc: host
     shm_size: 8G
     devices:
@@ -24,8 +21,6 @@ services:
       - SYS_PTRACE
     security_opt:
       - seccomp=unconfined
-    ports:
-      - "8081:8080"
     environment:
       S3_HOST: ${S3_HOST}
       S3_PORT: ${S3_PORT}
@@ -37,18 +32,21 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER}
       RABBITMQ_PASS: ${RABBITMQ_PASS}
       MONGO_URI: mongodb://${MONGO_USER}:${MONGO_PASS}@mongo:27017/
+      HF_HOME: "/root/.cache/huggingface"
+    working_dir: /app
+    volumes:
+      - "/home/nontre/.cache/huggingface:/root/.cache/huggingface"
     depends_on:
       - minio
       - rabbitmq
       - mongo
 
   backend-images:
-    image: backend-images
     build: 
       context: backends/image_provider
       dockerfile: Dockerfile
-    ports:
-      - "8082:8080"
+    expose:
+      - 8080
     environment:
       MONGO_URI: mongodb://${MONGO_USER}:${MONGO_PASS}@mongo:27017/
     depends_on:
@@ -77,14 +75,28 @@ services:
 
   minio:
     image: minio/minio
-    command: server /data
-    environment:
-      MINIO_ACCESS_KEY: ${S3_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${S3_SECRET_KEY}
     ports:
-      - "9000:9000"
+      - 9001:9001
+    expose:
+      - 9000
+    environment:
+      - MINIO_ROOT_USER=${MINIO_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_PASS}
     volumes:
-      - minio_data:/data
+      - ./cdn/minio/data:/data
+    command: server /data --console-address ":9001"
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - 8080:8080
+    volumes:
+      - ./cdn/nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - frontend-landing
+      - backend-images
+      - minio
+    restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:management
@@ -92,8 +104,9 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
     ports:
-      - "5672:5672"
       - "15672:15672"
+    expose:
+      - 5672
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 
