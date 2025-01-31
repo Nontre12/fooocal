@@ -1,13 +1,29 @@
 services:
   frontend-landing:
+    image: frontend-landing
     build: 
       context: frontends/landing
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
 
   backend-ai-images:
+    image: backen-ai-images
     build: 
       context: backends/ai_image_generator
+      dockerfile: Dockerfile
+    runtime: rocm
+    ipc: host
+    shm_size: 8G
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
     ports:
       - "8081:8080"
     environment:
@@ -27,8 +43,10 @@ services:
       - mongo
 
   backend-images:
+    image: backend-images
     build: 
       context: backends/image_provider
+      dockerfile: Dockerfile
     ports:
       - "8082:8080"
     environment:
