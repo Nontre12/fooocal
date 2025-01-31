@@ -13,7 +13,7 @@ def example():
         # Convert _id to string for JSON serialization
         docs = [
             {"_id": str(doc["_id"]), "image_file_name": doc["image_file_name"]}
-            for doc in collection.find({}, {"_id": 1, "image_file_name": 1})
+            for doc in collection.find({}, {"_id": 1, "image_file_name": 1}).sort("_id", -1)
         ]
 
     return jsonify(docs)
