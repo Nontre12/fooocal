@@ -3,7 +3,7 @@ import os
 os.environ["PYTORCH_HIP_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
 
-import time, uuid, json, pika
+import time, uuid, json, pika, threading
 import torch
 from diffusers import FluxPipeline
 from minio import Minio
@@ -149,6 +149,19 @@ def main():
     )
 
     image_generator = ImageGenerator()
+
+    def send_heartbeats():
+        """ Continuously sends heartbeats to RabbitMQ to keep the connection alive. """
+        while True:
+            try:
+                rabbitmq.process_data_events()
+                time.sleep(30) 
+            except Exception as e:
+                print(f"Heartbeat thread error: {e}")
+                break 
+
+    heartbeat_thread = threading.Thread(target=send_heartbeats, daemon=True)
+    heartbeat_thread.start()
 
     def prompt(channel, method_frame, properties, body):
         print(f" [x] Received {body}")
