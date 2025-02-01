@@ -8,6 +8,20 @@ import torch
 from diffusers import FluxPipeline
 from minio import Minio
 from pymongo import MongoClient
+from bson import ObjectId
+
+class Database:
+    def __init__(self, connection_uri: str, database_name: str, collection_name: str):
+        self.connection = MongoClient(connection_uri)
+        self.database = self.connection[database_name]
+        self.collection = self.database[collection_name]
+
+    def save(self, data):
+        self.collection.update_one(
+            {"_id": data["_id"]},
+            {"$set": data},
+            upsert=True
+        )
 
 
 class S3Bucket:
@@ -109,6 +123,14 @@ def main():
     rabbitmq_username = os.environ.get("RABBITMQ_USER", "root")
     rabbitmq_password = os.environ.get("RABBITMQ_PASSWORD", "root")
 
+    URI = "mongodb://root:root@mongo:27017/"
+
+    database = Database(
+        connection_uri=URI,
+        database_name='fooocal',
+        collection_name='generated-images'
+    )
+
     s3_bucket = S3Bucket(
         endpoint=s3_endpoint,
         bucket_name=s3_bucket,
@@ -142,6 +164,15 @@ def main():
         destination_file_name = uuid.uuid4()
         destination_file = f"{destination_file_name}.png"
 
+        object_id = ObjectId()
+
+        database.save({
+            "_id": object_id,
+            "image_file_name": destination_file,
+            "prompt": prompt,
+            "status": "IN_PROGRESS"
+        })
+
         out = image_generator.prompt(prompt=prompt)
         out.save(source_file)
 
@@ -154,17 +185,10 @@ def main():
         if os.path.exists(source_file):
             os.remove(source_file)
 
-        data = {
-            #"_id": uuid.uuid4(),
-            "image_file_name": destination_file,
-            "prompt": prompt
-        }
-
-        client = MongoClient("mongodb://root:root@mongo:27017/")
-        database = client["fooocal"]
-
-        collection = database["generated-images"]
-        collection.insert_one(data)
+        database.save({
+            "_id": object_id,
+            "status": "DONE"
+        })
 
     rabbitmq.consume("generate_ai_image", callback=prompt)
 

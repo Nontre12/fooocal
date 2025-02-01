@@ -34,7 +34,7 @@ const Gallery: React.FC = () => {
       {images.length === 0 ? (
         <p>No images available</p>
       ) : (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {images.map((item) => (
             <div key={item.image_file_name}>
               <img
