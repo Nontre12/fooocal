@@ -76,7 +76,7 @@ class Rabbit:
     def consume(self, queue_name: str, callback: callable):
         self.channel.queue_declare(queue=queue_name)
         self.channel.basic_consume(
-            queue=queue_name, on_message_callback=callback, auto_ack=True
+            queue=queue_name, on_message_callback=callback, auto_ack=False
         )
         self.channel.start_consuming()
 
@@ -91,19 +91,22 @@ class ImageGenerator:
         )
         self.pipe.enable_model_cpu_offload()
 
-    def prompt(self, prompt: str):
+    def prompt(
+        self,
+        prompt: str,
+        width: int = 832,
+        height: int = 1216,
+        steps: int = 20
+    ):
         SEED = 0
         GUIDANCE_SCALE = 3.5
-        HEIGHT = 1216
-        WIDTH = 832
-        STEPS = 20
 
         out = self.pipe(
             prompt=prompt,
             guidance_scale=GUIDANCE_SCALE,
-            height=HEIGHT,
-            width=WIDTH,
-            num_inference_steps=STEPS,
+            height=height,
+            width=width,
+            num_inference_steps=steps,
             generator=torch.Generator("cpu").manual_seed(SEED),
         ).images[0]
 
@@ -140,18 +143,27 @@ def main():
     )
 
     rabbitmq = Rabbit(
-        hostname=rabbitmq_host, username=rabbitmq_username, password=rabbitmq_password
+        hostname=rabbitmq_host,
+        username=rabbitmq_username,
+        password=rabbitmq_password
     )
 
     image_generator = ImageGenerator()
 
-    def prompt(ch, method, properties, body):
+    def prompt(channel, method_frame, properties, body):
         print(f" [x] Received {body}")
 
         # Parse the JSON string
         try:
             data = json.loads(body)
+
+            object_id = data.get("_id")
             prompt = data.get("prompt")
+            image_file_name = data.get("image_file_name")
+            width = int(data.get("width", 832))
+            height = int(data.get("height", 1216))
+            steps = int(data.get("steps", 20))
+
         except json.JSONDecodeError as e:
             print(f"Error decoding JSON: {e}")
             return
@@ -161,19 +173,22 @@ def main():
             return
 
         source_file = "./generated.png"
-        destination_file_name = uuid.uuid4()
-        destination_file = f"{destination_file_name}.png"
+        destination_file = image_file_name
 
-        object_id = ObjectId()
+        object_id = ObjectId(object_id)
 
         database.save({
             "_id": object_id,
-            "image_file_name": destination_file,
-            "prompt": prompt,
             "status": "IN_PROGRESS"
         })
 
-        out = image_generator.prompt(prompt=prompt)
+        out = image_generator.prompt(
+            prompt=prompt,
+            width=width,
+            height=height,
+            steps=steps
+        )
+        
         out.save(source_file)
 
         s3_bucket.push_object(
@@ -189,6 +204,8 @@ def main():
             "_id": object_id,
             "status": "DONE"
         })
+
+        channel.basic_ack(delivery_tag=method_frame.delivery_tag)
 
     rabbitmq.consume("generate_ai_image", callback=prompt)
 
