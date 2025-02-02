@@ -1,27 +1,29 @@
+from abc import ABC, abstractmethod
 import torch
 from diffusers import FluxPipeline, StableDiffusionXLPipeline
 
-class FLUXImageGenerator:
-    def __init__(self):
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
 
-        self.pipe = FluxPipeline.from_pretrained(
-            "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
+class ImageGenerator(ABC):
+    @abstractmethod
+    def prompt(self, prompt: str, width: int, height: int, steps: int):
+        pass
+
+class BaseDiffusionGenerator(ImageGenerator):
+    def __init__(self, model_class, model_name: str, torch_dtype):
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        
+        self.pipe = model_class.from_pretrained(
+            model_name, torch_dtype=torch_dtype
         )
         self.pipe.enable_model_cpu_offload()
 
-    def prompt(
-        self,
-        prompt: str,
-        width: int = 832,
-        height: int = 1216,
-        steps: int = 20
-    ):
+    def prompt(self, prompt: str, width: int = 832, height: int = 1216, steps: int = 20):
         SEED = 0
         GUIDANCE_SCALE = 3.5
 
-        out = self.pipe(
+        return self.pipe(
             prompt=prompt,
             guidance_scale=GUIDANCE_SCALE,
             height=height,
@@ -30,46 +32,25 @@ class FLUXImageGenerator:
             generator=torch.Generator("cpu").manual_seed(SEED),
         ).images[0]
 
-        return out
-
-class JuggernautXLV9ImageGenerator:
+class FLUX1DEVImageGenerator(BaseDiffusionGenerator):
     def __init__(self):
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
+        super().__init__(FluxPipeline, "black-forest-labs/FLUX.1-dev", torch.bfloat16)
 
-        self.pipe = StableDiffusionXLPipeline.from_pretrained(
-            "RunDiffusion/Juggernaut-XL-v9",
-            torch_dtype=torch.float16,
-            variant="fp16",
-            use_safetensors=True
+class JuggernautXLV9ImageGenerator(BaseDiffusionGenerator):
+    def __init__(self):
+        super().__init__(
+            StableDiffusionXLPipeline, "RunDiffusion/Juggernaut-XL-v9", torch.float16
         )
-        self.pipe.enable_model_cpu_offload()
-
-    def prompt(
-        self,
-        prompt: str,
-        width: int = 832,
-        height: int = 1216,
-        steps: int = 20
-    ):
-        SEED = 0
-        GUIDANCE_SCALE = 3.5
-
-        out = self.pipe(
-            prompt=prompt,
-            guidance_scale=GUIDANCE_SCALE,
-            height=height,
-            width=width,
-            num_inference_steps=steps,
-            generator=torch.Generator("cpu").manual_seed(SEED),
-        ).images[0]
-
-        return out
 
 class ImageGeneratorFactory:
+    _generators = {
+        "black-forest-labs/FLUX.1-dev": FLUX1DEVImageGenerator,
+        "RunDiffusion/Juggernaut-XL-v9": JuggernautXLV9ImageGenerator,
+    }
+
     @staticmethod
-    def get_image_generator(model_name: str):
-        if model_name == "black-forest-labs/FLUX.1-dev":
-            return FLUXImageGenerator()
-        elif model_name == "RunDiffusion/Juggernaut-XL-v9":
-            return JuggernautXLV9ImageGenerator()
+    def get_image_generator(model_name: str) -> ImageGenerator:
+        generator_class = ImageGeneratorFactory._generators.get(model_name)
+        if not generator_class:
+            raise ValueError(f"Unsupported model: {model_name}")
+        return generator_class()
