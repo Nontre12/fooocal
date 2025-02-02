@@ -2,7 +2,7 @@ FROM rocm/pytorch:latest
 
 WORKDIR /app
 
-COPY app.py requirements.txt /app/
+COPY . .
 
 RUN pip install -r requirements.txt
 

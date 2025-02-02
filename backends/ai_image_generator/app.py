@@ -1,119 +1,14 @@
-import os
-
-os.environ["PYTORCH_HIP_ALLOC_CONF"] = "expandable_segments:True"
-os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
-
-import time, uuid, json, pika, threading
-import torch
-from diffusers import FluxPipeline
-from minio import Minio
-from pymongo import MongoClient
+import os, time, json, threading
 from bson import ObjectId
 
-class Database:
-    def __init__(self, connection_uri: str, database_name: str, collection_name: str):
-        self.connection = MongoClient(connection_uri)
-        self.database = self.connection[database_name]
-        self.collection = self.database[collection_name]
-
-    def save(self, data):
-        self.collection.update_one(
-            {"_id": data["_id"]},
-            {"$set": data},
-            upsert=True
-        )
-
-
-class S3Bucket:
-    def __init__(
-        self,
-        endpoint: str,
-        bucket_name: str,
-        access_key: str,
-        secret_key: str,
-        secure: bool = True,
-    ):
-        self.endpoint = endpoint
-        self.bucket_name = bucket_name
-        self.access_key = access_key
-        self.secret_key = secret_key
-        self.secure = secure
-
-        self.client = Minio(
-            endpoint=self.endpoint,
-            access_key=self.access_key,
-            secret_key=self.secret_key,
-            secure=self.secure,
-        )
-
-        found = self.client.bucket_exists(bucket_name)
-        if not found:
-            self.client.make_bucket(bucket_name)
-
-    def push_object(
-        self,
-        source_file: str,
-        destination_file: str,
-        content_type="application/octet-stream",
-    ):
-        self.client.fput_object(
-            bucket_name=self.bucket_name,
-            object_name=destination_file,
-            file_path=source_file,
-            content_type=content_type,
-        )
-
-
-class Rabbit:
-    def __init__(self, hostname: str, username: str, password: str):
-        self.credentials = pika.PlainCredentials(username, password)
-        self.conneciton_parameters = pika.ConnectionParameters(
-            host=hostname, credentials=self.credentials
-        )
-        self.connection = pika.BlockingConnection(self.conneciton_parameters)
-        self.channel = self.connection.channel()
-
-    def consume(self, queue_name: str, callback: callable):
-        self.channel.queue_declare(queue=queue_name)
-        self.channel.basic_consume(
-            queue=queue_name, on_message_callback=callback, auto_ack=False
-        )
-        self.channel.start_consuming()
-
-
-class ImageGenerator:
-    def __init__(self):
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-
-        self.pipe = FluxPipeline.from_pretrained(
-            "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
-        )
-        self.pipe.enable_model_cpu_offload()
-
-    def prompt(
-        self,
-        prompt: str,
-        width: int = 832,
-        height: int = 1216,
-        steps: int = 20
-    ):
-        SEED = 0
-        GUIDANCE_SCALE = 3.5
-
-        out = self.pipe(
-            prompt=prompt,
-            guidance_scale=GUIDANCE_SCALE,
-            height=height,
-            width=width,
-            num_inference_steps=steps,
-            generator=torch.Generator("cpu").manual_seed(SEED),
-        ).images[0]
-
-        return out
-
+from fooocal.diffusers import ImageGeneratorFactory
+from fooocal.database import Database
+from fooocal.s3 import S3Bucket
+from fooocal.broker import Rabbit
 
 def main():
+    os.environ["PYTORCH_HIP_ALLOC_CONF"] = "expandable_segments:True"
+    os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
     # sleep for available dependency services
     time.sleep(5)
 
@@ -148,7 +43,8 @@ def main():
         password=rabbitmq_password
     )
 
-    image_generator = ImageGenerator()
+    image_generator_factory = ImageGeneratorFactory()
+    image_generator = image_generator_factory.get_image_generator(model_name="black-forest-labs/FLUX.1-dev")
 
     def send_heartbeats():
         """ Continuously sends heartbeats to RabbitMQ to keep the connection alive. """
@@ -159,9 +55,6 @@ def main():
             except Exception as e:
                 print(f"Heartbeat thread error: {e}")
                 break 
-
-    heartbeat_thread = threading.Thread(target=send_heartbeats, daemon=True)
-    heartbeat_thread.start()
 
     def prompt(channel, method_frame, properties, body):
         print(f" [x] Received {body}")
@@ -219,6 +112,9 @@ def main():
         })
 
         channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+
+    heartbeat_thread = threading.Thread(target=send_heartbeats, daemon=True)
+    heartbeat_thread.start()
 
     rabbitmq.consume("generate_ai_image", callback=prompt)
 
