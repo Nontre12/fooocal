@@ -1,0 +1,16 @@
+---
+import ImagePromptForm from "./ImagePromptForm";
+---
+
+<div class="hero bg-base-200 min-h-screen flex justify-center items-center p-10">
+  <div class="hero-content flex flex-col lg:flex-row-reverse items-center text-center lg:text-left">
+    <img
+      src="https://img.daisyui.com/images/stock/photo-1635805737707-575885ab0820.webp"
+      class="max-w-sm rounded-lg shadow-2xl"
+    />
+    <div class="lg:ml-10">
+      <h1 class="text-5xl font-bold">Generate your own images!</h1>
+      <ImagePromptForm client:load />
+    </div>
+  </div>
+</div>

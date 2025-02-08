@@ -1,16 +1,8 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import ImagePromptForm from '../components/ImagePromptForm';
+import Layout from "../layouts/Layout.astro";
+import Gallery from "../components/Gallery";
 ---
 
 <Layout>
-	<div class="p-2">
-		<ImagePromptForm client:load/>
-	</div>
+  <Gallery client:load />
 </Layout>
-
-<style>
-	html {
-		background-color: black;
-	}
-</style>
