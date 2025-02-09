@@ -19,17 +19,22 @@ class BaseDiffusionGenerator(ImageGenerator):
         )
         self.pipe.enable_model_cpu_offload()
 
-    def prompt(self, prompt: str, width: int = 832, height: int = 1216, steps: int = 20):
-        SEED = 0
-        GUIDANCE_SCALE = 3.5
-
+    def prompt(
+        self,
+        prompt: str,
+        width: int = 832,
+        height: int = 1216,
+        steps: int = 20,
+        guidance_scale: float = 7.0,
+        seed: int = 0
+    ):
         return self.pipe(
             prompt=prompt,
-            guidance_scale=GUIDANCE_SCALE,
+            guidance_scale=guidance_scale,
             height=height,
             width=width,
             num_inference_steps=steps,
-            generator=torch.Generator("cpu").manual_seed(SEED),
+            generator=torch.Generator("cpu").manual_seed(seed),
         ).images[0]
 
 class FLUX1DEVImageGenerator(BaseDiffusionGenerator):

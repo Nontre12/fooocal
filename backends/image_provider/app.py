@@ -1,9 +1,11 @@
 import os, pika, json, uuid
 from flask import Flask, jsonify, request
+from flask_compress import Compress
 from pymongo import MongoClient
 from bson import ObjectId
 
 app = Flask(__name__)
+Compress(app)
 
 MONGO_URI = "mongodb://root:root@mongo:27017/"
 MONGO_DATABASE = "fooocal"
@@ -41,7 +43,7 @@ def get_images():
             {
                 "_id": str(doc["_id"]),
                 "image_file_name": doc["image_file_name"],
-                "prompt": doc["prompt"],
+                #"prompt": doc["prompt"],
                 "status": doc.get("status", "DONE")
             }
             for doc in collection.find({}, {}).sort("_id", -1)
@@ -57,6 +59,8 @@ def post_image():
     width = int(data.get("width", 832))
     height = int(data.get("height", 1216))
     steps = int(data.get("steps", 20))
+    guidance_scale = float(data.get("guidance_scale", 7.0))
+    seed = int(data.get("seed", 0))
 
     image_file_name = str(uuid.uuid4()) + '.png'
 
@@ -71,6 +75,8 @@ def post_image():
                 "width": width,
                 "height": height,
                 "steps": steps,
+                "guidance_scale": guidance_scale,
+                "seed": seed,
                 "status": "QUEUED"
             }
         ).inserted_id
@@ -90,6 +96,8 @@ def post_image():
             "width": width,
             "height": height,
             "steps": steps,
+            "guidance_scale": guidance_scale,
+            "seed": seed,
             "status": "QUEUED"
         })
     )

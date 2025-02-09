@@ -2,27 +2,32 @@ import { useState } from "react";
 
 function ImagePromptForm() {
   const [prompt, setPrompt] = useState("");
-  const [width, setWidth] = useState<number>(1024);
-  const [height, setHeight] = useState<number>(1024);
+  const [width, setWidth] = useState(1024);
+  const [height, setHeight] = useState(1024);
+  const [guidanceScale, setGuidanceScale] = useState(7.0);
+  const [seed, setSeed] = useState(0);
+
   const [error, setError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async () => {
     try {
       setIsLoading(true);
+      setError(null);
+      
       const response = await fetch("/api/images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          "prompt": prompt,
-          "width": width,
-          "height": height
-        })
+          prompt,
+          width,
+          height,
+          guidance_scale: guidanceScale,
+          seed,
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to generate image");
-      }
+      if (!response.ok) throw new Error("Failed to generate image");
     } catch (err) {
       setError(err as Error);
     } finally {
@@ -31,41 +36,63 @@ function ImagePromptForm() {
   };
 
   return (
-    <div className="p-5">
+    <div className="p-5 max-w-md mx-auto shadow-lg rounded-lg">
       <input
         type="text"
         placeholder="Enter image prompt..."
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         disabled={isLoading}
-        className="text-black w-full px-3 py-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-200"
+        className="input input-bordered w-full"
       />
-      <div className="flex gap-2 mt-2">
-        <input
-          type="number"
-          value={width}
-          onChange={(e) => setWidth(Number(e.target.value))}
-          disabled={isLoading}
-          className="text-black w-1/2 px-3 py-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-200"
-          placeholder="Width"
-        />
-        <input
-          type="number"
-          value={height}
-          onChange={(e) => setHeight(Number(e.target.value))}
-          disabled={isLoading}
-          className="text-black w-1/2 px-3 py-2 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-200"
-          placeholder="Height"
-        />
+
+      <div className="grid grid-cols-2 gap-4 mt-4">
+        <label className="flex flex-col">
+          <span className="text-sm font-medium">Width (px)</span>
+          <input
+            type="number"
+            value={width}
+            onChange={(e) => setWidth(Number(e.target.value))}
+            disabled={isLoading}
+            className="input input-bordered"
+          />
+        </label>
+        <label className="flex flex-col">
+          <span className="text-sm font-medium">Height (px)</span>
+          <input
+            type="number"
+            value={height}
+            onChange={(e) => setHeight(Number(e.target.value))}
+            disabled={isLoading}
+            className="input input-bordered"
+          />
+        </label>
       </div>
+
+      <div className="mt-4">
+        <label className="flex flex-col">
+          <span className="text-sm font-medium">Guidance Scale: {guidanceScale}</span>
+          <input
+            type="range"
+            min={0.1}
+            max={20.0}
+            step={0.1}
+            value={guidanceScale}
+            onChange={(e) => setGuidanceScale(Number(e.target.value))}
+            className="range range-primary"
+          />
+        </label>
+      </div>
+
       <button
         onClick={handleSubmit}
         disabled={isLoading || !prompt}
-        className="mt-2 btn btn-primary disabled:btn-secondary"
+        className="mt-4 btn btn-primary w-full disabled:btn-secondary"
       >
         {isLoading ? "Generating..." : "Generate Image"}
       </button>
-      {error && <p className="text-red-500 text-sm">{error.message}</p>}
+
+      {error && <p className="text-red-500 text-sm mt-2">{error.message}</p>}
     </div>
   );
 }

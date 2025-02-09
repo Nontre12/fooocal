@@ -64,11 +64,15 @@ def main():
             data = json.loads(body)
 
             object_id = data.get("_id")
-            prompt = data.get("prompt")
             image_file_name = data.get("image_file_name")
+
+            prompt = data.get("prompt")
             width = int(data.get("width", 832))
             height = int(data.get("height", 1216))
             steps = int(data.get("steps", 20))
+            guidance_scale = float(data.get("guidance_scale", 7.0))
+            seed = int(data.get("seed", 0))
+
 
         except json.JSONDecodeError as e:
             print(f"Error decoding JSON: {e}")
@@ -92,7 +96,9 @@ def main():
             prompt=prompt,
             width=width,
             height=height,
-            steps=steps
+            steps=steps,
+            guidance_scale=guidance_scale,
+            seed=seed
         )
         
         out.save(source_file)
